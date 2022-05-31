@@ -1,0 +1,7 @@
+{
+    "port": "/dev/tty.usbmodem14301",
+    "board": "arduino:avr:uno",
+    "sketch": "AutoDispenserBoard.ino",
+    "programmer": "avrispmkii",
+    "output": "./out"
+}
