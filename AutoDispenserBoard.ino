@@ -18,11 +18,15 @@ const char pass[] = "WiFi@CaLaTere";
 
 const int MAX_DISPENSERS = 3;
 const char clientId[] = "client-2";
+const char mqttClient[] = "AutoDispenserBoard";
 
 WiFiEspClient wifiClient;
 WiFiEspUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
 MQTTClient mqtt;
+
+int DISPENSER_1 = 5;
+char msgToSend[3][100] = {"", "", ""};
 
 struct DispenserConfig {
     unsigned long lastUpdate;
@@ -30,15 +34,14 @@ struct DispenserConfig {
     int hours[3];
 };
 
-DispenserConfig dispenserConfigs[MAX_DISPENSERS] = {};
-
-void cleanDispenserConfigs() {
-    for (int i = 0; i < MAX_DISPENSERS; i++) {
-        dispenserConfigs[i].lastUpdate = 0;
-    }
-}
+DispenserConfig dispenserConfigs[MAX_DISPENSERS] = {
+    {0, {0, 0, 0, 0, 0, 0, 0}, {0, 0, 0}},
+    {0, {0, 0, 0, 0, 0, 0, 0}, {0, 0, 0}},
+    {0, {0, 0, 0, 0, 0, 0, 0}, {0, 0, 0}}};
 
 void setup() {
+    pinMode(DISPENSER_1, OUTPUT);
+
     Serial.begin(9600);
     ESP8266Serial.begin(9600);
 
@@ -50,52 +53,58 @@ void setup() {
         ;
     }
 
-    cleanDispenserConfigs();
+    WiFi.init(&ESP8266Serial);
+
     readAllDispenserConfigs();
 
-    initWifi(true);
+    initWifi();
+    setupMQTT();
     initMQTT();
+    timeClient.begin();
 }
 
 unsigned long lastMillis = 0;
 unsigned long lastNTP = 0;
 
 void loop() {
-    if (WiFi.status() == WL_CONNECTED || wifiClient.connected()) {
-        if (!mqtt.connected() || !mqtt.loop()) {
-            // Serial.println(F("Reconnecting to MQTT..."));
-            initMQTT();
-            return;
-        }
-        delay(5);
+    mqtt.loop();
+
+    if (millis() - lastMillis > 10000) {
         timeClient.update();
 
-        if (millis() - lastMillis > 10000) {
-            lastMillis = millis();
-            mqtt.publish("/hello",
-                         "hey " + String(timeClient.getFormattedTime()), false,
-                         2);
+        lastMillis = millis();
+        char msg[100];
+        sprintf(msg, "Time: %s", timeClient.getFormattedTime().c_str());
+        mqtt.publish("/hello", msg, false, 2);
+    }
+
+    // Check if any msgToSend is not empty
+    // and send it to mqtt
+    for (int i = 0; i < MAX_DISPENSERS; i++) {
+        if (strlen(msgToSend[i]) > 0) {
+            mqtt.publish("/hello", msgToSend[i], false, 2);
+            msgToSend[i][0] = '\0';
         }
-    } else {
-        // Serial.println(F("Not connected to wifi!"));
-        delay(1000);
     }
 }
 
-void mqttMessageReceived(MQTTClient *refClient, char topic[], char bytes[],
-                         int length) {
-    String payload = String((const char *)bytes);
+void mqttMessage(String &t, String &p) {
+    char *topic = (char *)t.c_str();
+    char *payload = (char *)p.c_str();
 
-    // Serial.print(F("Message received: "));
-    // Serial.print(topic);
+    digitalWrite(DISPENSER_1, HIGH);
 
     if (strcmp(topic, "/random") == 0) {
-        MQTTClient cli = *refClient;
-
         StaticJsonDocument<128> doc;
-        DeserializationError error = deserializeJson(doc, bytes);
+        DeserializationError error = deserializeJson(doc, payload);
 
         if (error) {
+            delay(500);
+            digitalWrite(DISPENSER_1, LOW);
+            delay(500);
+            digitalWrite(DISPENSER_1, HIGH);
+            delay(500);
+            digitalWrite(DISPENSER_1, LOW);
             return;
         }
 
@@ -109,7 +118,6 @@ void mqttMessageReceived(MQTTClient *refClient, char topic[], char bytes[],
         }
 
         JsonArray h = doc["h"];
-
         int hours[3];
         for (int i = 0; i < 3; i++) {
             hours[i] = h[i];
@@ -120,30 +128,21 @@ void mqttMessageReceived(MQTTClient *refClient, char topic[], char bytes[],
             return;
         }
 
+        doc.clear();
+
         saveDispenserConfig(id, days, hours);
 
         readAllDispenserConfigs();
 
         // Serial.println(F("Saved!"));
 
-        String msg = "";
-
         for (int i = 0; i < MAX_DISPENSERS; i++) {
-            if (dispenserConfigs[i].lastUpdate == 0) {
-                continue;
-            }
-
-            msg += "d[";
-            msg += i;
-            msg += "]:";
-            msg += dispenserConfigs[i].lastUpdate;
-            msg += ",";
+            sprintf(msgToSend[i], "d[%d]=%lu", i,
+                    dispenserConfigs[i].lastUpdate);
         }
-
-        Serial.println(msg);
-
-        cli.publish("/hello", msg, false, 2);
     }
+
+    digitalWrite(DISPENSER_1, LOW);
 }
 
 void saveDispenserConfig(int id, int days[], int hours[]) {
@@ -163,77 +162,51 @@ void saveDispenserConfig(int id, int days[], int hours[]) {
 }
 
 void readAllDispenserConfigs() {
-    int size = sizeof(DispenserConfig);
     int address = 0;
 
     for (int i = 0; i < MAX_DISPENSERS; i++) {
-        DispenserConfig config;
-        EEPROM.get(address, config);
+        EEPROM.get(address, dispenserConfigs[i]);
         Serial.print("Dispenser ");
         Serial.println(i);
-        Serial.println("Last update: " + String(config.lastUpdate));
-
-        if (config.lastUpdate <= 0) {
-            break;
-        }
-
-        dispenserConfigs[i] = config;
+        char msg[64] = "";
+        sprintf(msg, "d[%d]=%lu", i, dispenserConfigs[i].lastUpdate);
+        Serial.println(msg);
 
         Serial.println("Days: \t");
         for (int j = 0; j < 7; j++) {
-            Serial.print(config.days[j]);
+            Serial.print(dispenserConfigs[i].days[j]);
         }
         Serial.println();
 
         Serial.println("Hours: \t");
         for (int j = 0; j < 3; j++) {
-            Serial.print(config.hours[j]);
+            Serial.print(dispenserConfigs[i].hours[j]);
         }
         Serial.println();
+
+        address += sizeof(DispenserConfig);
     }
+}
+
+void setupMQTT() {
+    mqtt.begin("192.168.0.23", wifiClient);
+    mqtt.onMessage(mqttMessage);
+    mqtt.ref = &mqtt;
 }
 
 void initMQTT() {
-    mqtt.begin("192.168.0.23", wifiClient);
-    mqtt.onMessageAdvanced(mqttMessageReceived);
-    mqtt.ref = &mqtt;
-
-    // Serial.println(F("Connecting to MQTT..."));
-
-    const char *clientId = "AutoDispenserBoard";
-
-    while (!mqtt.connect(clientId, false)) {
-        // Serial.print(".");
+    while (!mqtt.connect(mqttClient, false)) {
         delay(1000);
     }
 
-    // Serial.println(F("Connected to MQTT!"));
-
-    mqtt.subscribe("/random");
-
-    // Serial.println(F("Subscribed to /random: "));
+    mqtt.subscribe("/random", 2);
 }
 
-void initWifi(bool shouldRetry) {
-    if (!isWifiInit) {
-        WiFi.init(&ESP8266Serial);
-        isWifiInit = true;
-    }
-
-    if (WiFi.status() == WL_NO_SHIELD) {
-        // Serial.println(F("WiFi shield not present"));
-        // Serial.println(F("Stopping..."));
-        while (true)
-            ;
-    }
+void initWifi() {
+    WiFi.begin(ssid, pass);
 
     while (WiFi.status() != WL_CONNECTED) {
-        // Serial.print(F("Attempting to connect to SSID: "));
-        // Serial.println(ssid);
-        WiFi.begin(ssid, pass);
-        delay(1000);
+        Serial.print(".");
+        delay(500);
     }
-
-    // Serial.println(F("Connected to wifi"));
-    timeClient.begin();
 }
