@@ -18,12 +18,10 @@
             "includePath": [
                 "/Users/angelmariages/Library/Arduino15/packages/arduino/hardware/avr/1.8.5/cores/arduino",
                 "/Users/angelmariages/Library/Arduino15/packages/arduino/hardware/avr/1.8.5/variants/standard",
-                "/Users/angelmariages/Documents/Arduino/libraries/ArduinoJson/src",
                 "/Users/angelmariages/Library/Arduino15/packages/arduino/hardware/avr/1.8.5/libraries/EEPROM/src",
                 "/Users/angelmariages/Documents/Arduino/libraries/MQTT/src",
-                "/Users/angelmariages/Documents/Arduino/libraries/NTPClient",
-                "/Users/angelmariages/Documents/Arduino/libraries/WiFiEsp/src",
                 "/Users/angelmariages/Library/Arduino15/packages/arduino/hardware/avr/1.8.5/libraries/SoftwareSerial/src",
+                "/Users/angelmariages/Documents/Arduino/libraries/WiFiEspAT/src",
                 "/Users/angelmariages/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include",
                 "/Users/angelmariages/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include-fixed",
                 "/Users/angelmariages/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/avr/include"
