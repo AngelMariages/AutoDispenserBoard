@@ -1,4 +1,4 @@
-# Clear EEPROM
+# Clear EEPROM
 ```c++
 void clearEEPROM() {
     for (unsigned int i = 0; i < EEPROM.length(); i++)
